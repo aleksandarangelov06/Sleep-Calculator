@@ -33,8 +33,8 @@
 
     <!-- Mode tabs -->
     <div class="tabs" role="tablist">
-      <button class="tab active" id="tab-wake" role="tab">If I sleep now&hellip;</button>
-      <button class="tab" id="tab-bed" role="tab">When should I sleep?</button>
+      <button class="tab active" id="tab-wake" role="tab">Calculate Wake-up time</button>
+      <button class="tab" id="tab-bed" role="tab">Calculate Bedtime</button>
     </div>
 
     <!-- ===== Wake-up mode (sleep now) ===== -->
@@ -45,10 +45,16 @@
         feeling refreshed instead of groggy.
       </p>
       <div class="now-line" id="now-line"></div>
+      <div class="sleep-warning hidden" id="wake-warning">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <span>It&rsquo;s past midnight. Going to bed this late can disrupt your body clock and lower sleep quality &mdash; try to turn in earlier when you can.</span>
+      </div>
       <div class="results" id="wake-results"></div>
       <p class="footnote">
-        Based on 90-minute sleep cycles plus the
-        <span id="fall-note">15</span> min it takes you to fall asleep.
+        Based on reccomendations from sleep studies. Not medical advice.
       </p>
     </section>
 
@@ -56,13 +62,48 @@
     <section class="panel hidden" id="panel-bed">
       <p class="lead">
         Pick the time you need to <strong>wake up</strong>, and we&rsquo;ll work backward to
-        find the best times to fall asleep &mdash; each one lands you at the end of a full
+        find the best times to fall asleep. Each one lands you at the end of a full
         sleep cycle.
       </p>
       <label class="field">
         <span class="field-label">I want to wake up at</span>
         <input type="time" id="wake-input" class="time-input" />
+
+        <!-- Custom picker: JS shows this only on desktop (pointer:fine). The native
+             input above stays the value source and is the control shown on touch. -->
+        <div class="time-picker" id="time-picker" hidden>
+          <button type="button" class="time-display" id="time-display"
+                  aria-haspopup="dialog" aria-expanded="false">
+            <span id="time-display-text">7:00 AM</span>
+            <svg class="time-display-icon" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+          </button>
+          <div class="time-pop" id="time-pop" hidden role="dialog" aria-label="Choose wake-up time">
+            <div class="time-cols">
+              <div class="time-col-wrap">
+                <span class="time-col-label">Hour</span>
+                <div class="time-col" id="col-hour" role="listbox" aria-label="Hour"></div>
+              </div>
+              <div class="time-col-wrap">
+                <span class="time-col-label">Min</span>
+                <div class="time-col" id="col-min" role="listbox" aria-label="Minute"></div>
+              </div>
+            </div>
+            <div class="time-ampm" id="col-ampm" role="listbox" aria-label="AM or PM"></div>
+          </div>
+        </div>
       </label>
+      <div class="sleep-warning hidden" id="bed-warning">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <span>Your recommended bedtime is past midnight. Going to bed this late can disrupt your body clock and lower sleep quality. Aim for an earlier wake-up time when you can.</span>
+      </div>
       <div class="results" id="bed-results"></div>
       <p class="footnote">
         Times include the <span id="fall-note-2">15</span> min it takes you to fall asleep.
@@ -82,15 +123,16 @@
       </button>
     </div>
 
-    <div class="setting-row">
+    <div class="setting-row column">
       <div class="setting-text">
-        <div class="setting-label">Light mode</div>
-        <div class="setting-sub">Switch between dark and light themes</div>
+        <div class="setting-label">Appearance</div>
+        <div class="setting-sub">Choose a light, dark, or system-matched theme</div>
       </div>
-      <label class="toggle-switch" for="theme-toggle">
-        <input id="theme-toggle" type="checkbox" />
-        <span class="toggle-track"></span>
-      </label>
+      <div class="segmented" id="theme-seg">
+        <button class="seg-opt" data-theme="light">Light</button>
+        <button class="seg-opt" data-theme="dark">Dark</button>
+        <button class="seg-opt" data-theme="system">System</button>
+      </div>
     </div>
 
     <div class="setting-row column">
