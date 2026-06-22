@@ -205,4 +205,59 @@ function init() {
   }, 30000);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+/* ---------- PWA: service worker + install ---------- */
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIOS() {
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent);
+}
+
+function setupPWA() {
+  // Register the service worker (enables offline + installability).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+
+  const row = document.getElementById('install-row');
+  const btn = document.getElementById('install-btn');
+  const sub = document.getElementById('install-sub');
+
+  if (isStandalone()) return; // already installed — leave the row hidden
+
+  let deferredPrompt = null;
+
+  // Android / desktop Chrome: capture the install prompt and offer a button.
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    row.classList.remove('hidden');
+    btn.classList.remove('hidden');
+  });
+
+  btn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    row.classList.add('hidden');
+  });
+
+  window.addEventListener('appinstalled', () => {
+    row.classList.add('hidden');
+  });
+
+  // iOS Safari has no install prompt — show manual instructions instead.
+  if (isIOS()) {
+    row.classList.remove('hidden');
+    btn.classList.add('hidden');
+    sub.innerHTML = 'Tap the Share button, then <strong>Add to Home Screen</strong>.';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  init();
+  setupPWA();
+});

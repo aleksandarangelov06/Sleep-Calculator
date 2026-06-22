@@ -2,9 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
   <title>Sleep Calculator</title>
+
+  <!-- PWA: installable to a phone home screen, works offline -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="pwa-icon.svg" />
+  <link rel="apple-touch-icon" href="apple-touch-icon-180x180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Sleep Calc" />
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -103,6 +113,14 @@
         <button class="seg-opt active" data-fmt="12">12-hour</button>
         <button class="seg-opt" data-fmt="24">24-hour</button>
       </div>
+    </div>
+
+    <div class="setting-row column hidden" id="install-row">
+      <div class="setting-text">
+        <div class="setting-label">Install app</div>
+        <div class="setting-sub" id="install-sub">Add Sleep Calculator to your home screen.</div>
+      </div>
+      <button class="install-btn hidden" id="install-btn">Add to home screen</button>
     </div>
   </aside>
 
