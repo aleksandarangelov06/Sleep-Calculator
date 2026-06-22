@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#000000" />
+  <title>Sleep Calculator</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="title">
+        <span class="moon">&#127769;</span> Sleep Calculator
+      </h1>
+      <button class="icon-btn" id="settings-btn" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+    </header>
+
+    <!-- Mode tabs -->
+    <div class="tabs" role="tablist">
+      <button class="tab active" id="tab-wake" role="tab">If I sleep now&hellip;</button>
+      <button class="tab" id="tab-bed" role="tab">When should I sleep?</button>
+    </div>
+
+    <!-- ===== Wake-up mode (sleep now) ===== -->
+    <section class="panel" id="panel-wake">
+      <p class="lead">
+        If you head to bed <strong>right now</strong>, you should aim to wake up at one of
+        these times. Each option ends at the close of a full sleep cycle, so you wake up
+        feeling refreshed instead of groggy.
+      </p>
+      <div class="now-line" id="now-line"></div>
+      <div class="results" id="wake-results"></div>
+      <p class="footnote">
+        Based on 90-minute sleep cycles plus the
+        <span id="fall-note">15</span> min it takes you to fall asleep.
+      </p>
+    </section>
+
+    <!-- ===== Bedtime mode ===== -->
+    <section class="panel hidden" id="panel-bed">
+      <p class="lead">
+        Pick the time you need to <strong>wake up</strong>, and we&rsquo;ll work backward to
+        find the best times to fall asleep &mdash; each one lands you at the end of a full
+        sleep cycle.
+      </p>
+      <label class="field">
+        <span class="field-label">I want to wake up at</span>
+        <input type="time" id="wake-input" class="time-input" />
+      </label>
+      <div class="results" id="bed-results"></div>
+      <p class="footnote">
+        Times include the <span id="fall-note-2">15</span> min it takes you to fall asleep.
+      </p>
+    </section>
+  </div>
+
+  <!-- ===== Settings drawer ===== -->
+  <div class="overlay hidden" id="overlay"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="close-settings" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-text">
+        <div class="setting-label">Light mode</div>
+        <div class="setting-sub">Switch between dark and light themes</div>
+      </div>
+      <label class="toggle-switch" for="theme-toggle">
+        <input id="theme-toggle" type="checkbox" />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+
+    <div class="setting-row column">
+      <div class="setting-text">
+        <div class="setting-label">Time to fall asleep</div>
+        <div class="setting-sub">The average minutes you lie awake before drifting off</div>
+      </div>
+      <div class="slider-row">
+        <input type="range" id="fall-slider" min="0" max="45" step="1" value="15" />
+        <span class="slider-value"><span id="fall-value">15</span> min</span>
+      </div>
+    </div>
+
+    <div class="setting-row column">
+      <div class="setting-text">
+        <div class="setting-label">Time format</div>
+        <div class="setting-sub">How times are displayed</div>
+      </div>
+      <div class="segmented" id="format-seg">
+        <button class="seg-opt active" data-fmt="12">12-hour</button>
+        <button class="seg-opt" data-fmt="24">24-hour</button>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
