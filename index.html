@@ -8,14 +8,14 @@
 
   <!-- PWA: installable to a phone home screen, works offline -->
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" type="image/svg+xml" href="pwa-icon.svg" />
-  <link rel="apple-touch-icon" href="apple-touch-icon-180x180.png" />
+  <link rel="icon" type="image/svg+xml" href="images/pwa-icon.svg" />
+  <link rel="apple-touch-icon" href="images/apple-touch-icon-180x180.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sleep Calc" />
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
   <div class="app">
@@ -44,7 +44,6 @@
         these times. Each option ends at the close of a full sleep cycle, so you wake up
         feeling refreshed instead of groggy.
       </p>
-      <div class="now-line" id="now-line"></div>
       <div class="sleep-warning hidden" id="wake-warning">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -164,8 +163,25 @@
       </div>
       <button class="install-btn hidden" id="install-btn">Add to home screen</button>
     </div>
+
+    <div class="setting-row column">
+      <div class="setting-text">
+        <div class="setting-label">Delete data</div>
+        <div class="setting-sub">Reset the app and clear all saved settings on this device.</div>
+      </div>
+      <button class="delete-btn" id="delete-data-btn">Delete data</button>
+    </div>
+
+    <!-- Studio credit + app version, pinned to the bottom of the drawer -->
+    <footer class="drawer-footer">
+      <img class="drawer-logo" src="images/pwa-icon.svg" alt="Alek Studios logo" width="40" height="40" />
+      <div class="drawer-footer-text">
+        <div class="studio-name">Alek Studios</div>
+        <div class="app-version">Version 1.0</div>
+      </div>
+    </footer>
   </aside>
 
-  <script src="app.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

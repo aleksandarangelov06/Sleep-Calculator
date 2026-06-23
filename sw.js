@@ -1,17 +1,17 @@
 /* Service worker for Sleep Calculator.
    Caches the app shell so it works offline and can be installed to a phone. */
-const CACHE = 'sleep-calc-v6';
+const CACHE = 'sleep-calc-v8';
 const ASSETS = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
+  './css/styles.css',
+  './js/app.js',
   './manifest.webmanifest',
-  './pwa-icon.svg',
-  './pwa-64x64.png',
-  './pwa-192x192.png',
-  './pwa-512x512.png',
-  './apple-touch-icon-180x180.png',
+  './images/pwa-icon.svg',
+  './images/pwa-64x64.png',
+  './images/pwa-192x192.png',
+  './images/pwa-512x512.png',
+  './images/apple-touch-icon-180x180.png',
 ];
 
 self.addEventListener('install', (event) => {

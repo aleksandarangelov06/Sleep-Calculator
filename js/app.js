@@ -8,8 +8,8 @@ const STORE = {
   format: 'sleepcalc-time-format', // '12' | '24'
 };
 
-const THEMES = ['light', 'dark', 'system'];
-const darkMql = window.matchMedia('(prefers-color-scheme: dark)');
+const THEMES = ['light', 'dark', 'system']; // valid theme choices
+const darkMql = window.matchMedia('(prefers-color-scheme: dark)'); // live OS dark-mode query
 
 /* ---------- State (persisted) ---------- */
 let fallMinutes = clampInt(localStorage.getItem(STORE.fall), 0, 45, 15);
@@ -20,12 +20,14 @@ let themePref = THEMES.includes(localStorage.getItem(STORE.theme))
   : 'system'; // follow the OS by default
 
 /* ---------- Helpers ---------- */
+// Parse an int and force it into [min, max]; use fallback if not a number.
 function clampInt(raw, min, max, fallback) {
   const n = parseInt(raw, 10);
   if (Number.isNaN(n)) return fallback;
   return Math.min(max, Math.max(min, n));
 }
 
+// Format a Date's time, honoring the 12/24-hour setting.
 function formatTime(date) {
   let h = date.getHours();
   const m = date.getMinutes().toString().padStart(2, '0');
@@ -34,7 +36,7 @@ function formatTime(date) {
   }
   const period = h >= 12 ? 'PM' : 'AM';
   h = h % 12;
-  if (h === 0) h = 12;
+  if (h === 0) h = 12; // 0 and 12 both display as 12
   return `${h}:${m} ${period}`;
 }
 
@@ -44,6 +46,7 @@ function isLateBedtime(date) {
   return h >= 0 && h < 5;
 }
 
+// Turn a minute count into a readable "H hr M min".
 function formatDuration(mins) {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
@@ -58,17 +61,19 @@ function effectiveTheme() {
   return themePref;
 }
 
+// Push the active theme to the page, browser UI color, and settings buttons.
 function applyTheme() {
   const theme = effectiveTheme();
   document.documentElement.setAttribute('data-theme', theme);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = theme === 'dark' ? '#000000' : '#f0f2f5';
+  if (meta) meta.content = theme === 'dark' ? '#000000' : '#f0f2f5'; // match browser chrome
   document.querySelectorAll('#theme-seg .seg-opt').forEach((b) =>
     b.classList.toggle('active', b.dataset.theme === themePref)
   );
 }
 
 /* ---------- Build a result row ---------- */
+// Make one time option card; `recommended` flags the highlighted 5-cycle pick.
 function resultRow(time, cycles, recommended) {
   const totalSleep = cycles * CYCLE_MIN;
   const row = document.createElement('div');
@@ -86,13 +91,11 @@ function resultRow(time, cycles, recommended) {
 /* ---------- Wake-up mode: sleep now ---------- */
 function renderWake() {
   const now = new Date();
-  document.getElementById('now-line').textContent =
-    `It's ${formatTime(now)} now. Based on your input, you could be asleep by about ${formatTime(new Date(now.getTime() + fallMinutes * 60000))}.`;
-
   const asleepAt = new Date(now.getTime() + fallMinutes * 60000);
   const container = document.getElementById('wake-results');
   container.innerHTML = '';
 
+  // One row per cycle option; 5 cycles (~7.5h) is the recommended pick.
   CYCLES.forEach((cycles) => {
     const wake = new Date(asleepAt.getTime() + cycles * CYCLE_MIN * 60000);
     container.appendChild(resultRow(wake, cycles, cycles === 5));
@@ -156,15 +159,44 @@ function switchTab(target) {
 }
 
 /* ---------- Settings drawer ---------- */
+// Slide the settings panel in/out and toggle the dimming overlay.
+// Also locks page scroll so the body scrollbar disappears while open.
 function openDrawer() {
   document.getElementById('drawer').classList.add('open');
   document.getElementById('overlay').classList.remove('hidden');
   document.getElementById('drawer').setAttribute('aria-hidden', 'false');
+  document.body.classList.add('drawer-open');
 }
 function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('overlay').classList.add('hidden');
   document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('drawer-open');
+}
+
+/* ---------- Delete data / reset ---------- */
+// Clear saved settings and return the app to its first-run defaults.
+function deleteData() {
+  if (!confirm('Delete all saved data and reset the app to defaults?')) return;
+
+  // Wipe this app's stored preferences.
+  Object.values(STORE).forEach((key) => localStorage.removeItem(key));
+
+  // Restore in-memory state to the same defaults used on first load.
+  fallMinutes = 15;
+  timeFormat = '12';
+  themePref = 'system';
+
+  // Reflect the reset across the settings UI and results.
+  applyTheme(); // also re-highlights the theme buttons
+  document.getElementById('fall-slider').value = fallMinutes;
+  document.getElementById('fall-value').textContent = fallMinutes;
+  document.querySelectorAll('#format-seg .seg-opt').forEach((b) =>
+    b.classList.toggle('active', b.dataset.fmt === timeFormat)
+  );
+  document.getElementById('wake-input').value = '07:00'; // default wake time
+  if (desktopMql.matches) { tpBuildColumns(); tpRender(); }
+  renderActive();
 }
 
 /* ---------- Wire up ---------- */
@@ -224,6 +256,9 @@ function init() {
     renderActive();
   });
 
+  // Delete data / reset to defaults
+  document.getElementById('delete-data-btn').addEventListener('click', deleteData);
+
   // Bedtime input
   document.getElementById('wake-input').addEventListener('input', renderBed);
 
@@ -250,6 +285,7 @@ const desktopMql = window.matchMedia('(hover: hover) and (pointer: fine)');
 const MIN_STEP = 5; // minute granularity in the custom columns
 let tpWired = false;
 
+// Collect the picker's DOM elements in one object.
 function tpEls() {
   return {
     input: document.getElementById('wake-input'),
@@ -277,6 +313,7 @@ function tpSetValue(h, m) {
   tpRender();
 }
 
+// Build one clickable option button for a column.
 function tpOption(label, type, value) {
   const b = document.createElement('button');
   b.type = 'button';
@@ -332,6 +369,7 @@ function tpPick(type, value) {
   tpSetValue(h, m);
 }
 
+// Mark the option matching `value` as selected within one column.
 function tpHighlight(col, value) {
   col.querySelectorAll('.time-opt').forEach((b) =>
     b.classList.toggle('selected', b.dataset.value === value)
@@ -362,6 +400,7 @@ function tpScrollSelected() {
   });
 }
 
+// Open the popup, center the selection, and watch for outside clicks.
 function tpOpen() {
   const { pop, display } = tpEls();
   pop.hidden = false;
@@ -370,6 +409,7 @@ function tpOpen() {
   tpScrollSelected();
   document.addEventListener('click', tpOutside, true);
 }
+// Close the popup and detach the outside-click listener.
 function tpClose() {
   const { pop, display } = tpEls();
   if (pop.hidden) return;
@@ -378,10 +418,12 @@ function tpClose() {
   display.setAttribute('aria-expanded', 'false');
   document.removeEventListener('click', tpOutside, true);
 }
+// Close when a click lands anywhere outside the picker.
 function tpOutside(e) {
   if (!tpEls().picker.contains(e.target)) tpClose();
 }
 
+// One-time wiring: toggle button + Escape to close.
 function tpWire() {
   const { display } = tpEls();
   display.addEventListener('click', () => (tpEls().pop.hidden ? tpOpen() : tpClose()));
@@ -413,16 +455,20 @@ function setupTimePicker() {
 }
 
 /* ---------- PWA: service worker + install ---------- */
+// True when launched as an installed app (not a browser tab).
 function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
+// True on iPhone/iPad/iPod (they need manual install steps).
 function isIOS() {
   return /iPad|iPhone|iPod/i.test(navigator.userAgent);
 }
+// True during local dev, where we skip caching.
 function isLocalhost() {
   return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
 }
 
+// Register the service worker and drive the "install app" settings row.
 function setupPWA() {
   if ('serviceWorker' in navigator) {
     if (isLocalhost()) {
@@ -478,6 +524,7 @@ function setupPWA() {
   }
 }
 
+// Boot the app once the DOM is ready.
 document.addEventListener('DOMContentLoaded', () => {
   init();
   setupPWA();
