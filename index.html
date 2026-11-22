@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#000000" />
+  <meta name="theme-color" content="#070b18" />
+  <meta name="description" content="Time your sleep around 90-minute cycles and wake up refreshed." />
   <title>Sleep Calculator</title>
 
   <!-- PWA: installable to a phone home screen, works offline -->
@@ -15,16 +16,24 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sleep Calc" />
 
+  <link rel="preload" href="fonts/outfit-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
+  <!-- Decorative night sky (gradient + star field) behind everything -->
+  <div class="sky" aria-hidden="true"></div>
+
   <div class="app">
     <header class="header">
-      <h1 class="title">
-        <span class="moon">&#127769;</span> Sleep Calculator
-      </h1>
+      <div class="brand">
+        <img class="brand-mark" src="images/pwa-icon.svg" alt="" width="42" height="42" />
+        <div>
+          <h1 class="title">Sleep Calculator</h1>
+          <p class="tagline">Wake up between sleep cycles</p>
+        </div>
+      </div>
       <button class="icon-btn" id="settings-btn" aria-label="Settings" title="Settings">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
@@ -32,18 +41,32 @@
     </header>
 
     <!-- Mode tabs -->
-    <div class="tabs" role="tablist">
-      <button class="tab active" id="tab-wake" role="tab">Calculate Wake-up time</button>
-      <button class="tab" id="tab-bed" role="tab">Calculate Bedtime</button>
+    <div class="tabs" role="tablist" aria-label="Mode" data-active="wake">
+      <button class="tab active" id="tab-wake" role="tab" aria-selected="true" aria-controls="panel-wake">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+        Sleep now
+      </button>
+      <button class="tab" id="tab-bed" role="tab" aria-selected="false" aria-controls="panel-bed">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2" />
+          <path d="M5 3 2 6" /><path d="m22 6-3-3" />
+          <path d="M6.38 18.7 4 21" /><path d="M17.64 18.67 20 21" />
+        </svg>
+        Plan bedtime
+      </button>
     </div>
 
     <!-- ===== Wake-up mode (sleep now) ===== -->
-    <section class="panel" id="panel-wake">
-      <p class="lead">
-        If you head to bed <strong>right now</strong>, you should aim to wake up at one of
-        these times. Each option ends at the close of a full sleep cycle, so you wake up
-        feeling refreshed instead of groggy.
-      </p>
+    <section class="panel" id="panel-wake" role="tabpanel" aria-labelledby="tab-wake">
+      <div class="hero">
+        <span class="eyebrow">Going to bed now</span>
+        <div class="hero-time" id="now-time">&nbsp;</div>
+        <p class="hero-sub">
+          Wake up at the end of a sleep cycle and you&rsquo;ll feel refreshed instead of groggy.
+        </p>
+      </div>
       <div class="sleep-warning hidden" id="wake-warning">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -51,58 +74,45 @@
         </svg>
         <span>It&rsquo;s past midnight. Going to bed this late can disrupt your body clock and lower sleep quality.</span>
       </div>
+      <h2 class="section-label">Best times to wake up</h2>
       <div class="results" id="wake-results"></div>
       <p class="footnote">
-        Based on reccomendations from sleep studies. Not medical advice.
+        Includes <span id="fall-note">15</span> min to fall asleep. Based on recommendations
+        from sleep studies. Not medical advice.
       </p>
     </section>
 
     <!-- ===== Bedtime mode ===== -->
-    <section class="panel hidden" id="panel-bed">
-      <p class="lead">
-        Pick the time you need to <strong>wake up</strong>, and we&rsquo;ll work backward to
-        find the best times to fall asleep. Each one lands you at the end of a full
-        sleep cycle.
-      </p>
-      <label class="field">
-        <span class="field-label">I want to wake up at</span>
-        <input type="time" id="wake-input" class="time-input" />
-
-        <!-- Custom picker: JS shows this only on desktop (pointer:fine). The native
-             input above stays the value source and is the control shown on touch. -->
-        <div class="time-picker" id="time-picker" hidden>
-          <button type="button" class="time-display" id="time-display"
-                  aria-haspopup="dialog" aria-expanded="false">
-            <span id="time-display-text">7:00 AM</span>
-            <svg class="time-display-icon" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                 stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 7v5l3 2" />
-            </svg>
-          </button>
-          <div class="time-pop" id="time-pop" hidden role="dialog" aria-label="Choose wake-up time">
-            <div class="time-cols">
-              <div class="time-col-wrap">
-                <span class="time-col-label">Hour</span>
-                <div class="time-col" id="col-hour" role="listbox" aria-label="Hour"></div>
-              </div>
-              <div class="time-col-wrap">
-                <span class="time-col-label">Min</span>
-                <div class="time-col" id="col-min" role="listbox" aria-label="Minute"></div>
-              </div>
-            </div>
-            <div class="time-ampm" id="col-ampm" role="listbox" aria-label="AM or PM"></div>
-          </div>
+    <section class="panel hidden" id="panel-bed" role="tabpanel" aria-labelledby="tab-bed">
+      <div class="hero">
+        <!-- Switch: plan from a wake-up time (gives bedtimes) or a bedtime (gives alarm times) -->
+        <div class="segmented compact" id="plan-seg" role="group" aria-label="Plan from">
+          <button class="seg-opt active" data-from="wake" aria-pressed="true">Wake up at</button>
+          <button class="seg-opt" data-from="bed" aria-pressed="false">Go to bed at</button>
         </div>
-      </label>
+
+        <!-- Native inputs on touch; JS adds a custom picker after each on desktop -->
+        <div id="from-wake">
+          <label class="eyebrow" for="wake-input">I want to wake up at</label>
+          <input type="time" id="wake-input" class="time-input" />
+        </div>
+        <div id="from-bed" hidden>
+          <label class="eyebrow" for="bed-input">I want to go to bed at</label>
+          <input type="time" id="bed-input" class="time-input" />
+        </div>
+
+        <p class="hero-sub" id="plan-sub">
+          We&rsquo;ll work backward so you wake up at the end of a full sleep cycle.
+        </p>
+      </div>
       <div class="sleep-warning hidden" id="bed-warning">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
           <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
-        <span>Your recommended bedtime is past midnight. Going to bed this late can disrupt your body clock and lower sleep quality. Aim for an earlier wake-up time when you can.</span>
+        <span id="bed-warning-text">Your recommended bedtime is past midnight. Going to bed this late can disrupt your body clock and lower sleep quality. Aim for an earlier wake-up time when you can.</span>
       </div>
+      <h2 class="section-label" id="plan-label">Best times to go to bed</h2>
       <div class="results" id="bed-results"></div>
       <p class="footnote">
         Times include the <span id="fall-note-2">15</span> min it takes you to fall asleep.
@@ -112,74 +122,90 @@
 
   <!-- ===== Settings drawer ===== -->
   <div class="overlay hidden" id="overlay"></div>
-  <aside class="drawer" id="drawer" aria-hidden="true">
-    <div class="drawer-head">
-      <h2>Settings</h2>
-      <button class="icon-btn" id="close-settings" aria-label="Close settings">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    </div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Settings">
+    <div class="drawer-inner">
+      <div class="drawer-head">
+        <h2>Settings</h2>
+        <button class="icon-btn" id="close-settings" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
 
-    <div class="setting-row column">
-      <div class="setting-text">
-        <div class="setting-label">Appearance</div>
-        <div class="setting-sub">Choose a light, dark, or system-matched theme</div>
-      </div>
-      <div class="segmented" id="theme-seg">
-        <button class="seg-opt" data-theme="light">Light</button>
-        <button class="seg-opt" data-theme="dark">Dark</button>
-        <button class="seg-opt" data-theme="system">System</button>
-      </div>
-    </div>
+      <div class="settings">
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-label">Appearance</div>
+            <div class="setting-sub">Choose a light, dark, or system-matched theme</div>
+          </div>
+          <div class="segmented" id="theme-seg">
+            <button class="seg-opt" data-theme="light">Light</button>
+            <button class="seg-opt" data-theme="dark">Dark</button>
+            <button class="seg-opt" data-theme="system">System</button>
+          </div>
+        </div>
 
-    <div class="setting-row column">
-      <div class="setting-text">
-        <div class="setting-label">Time to fall asleep</div>
-        <div class="setting-sub">The average minutes you lie awake before drifting off</div>
-      </div>
-      <div class="slider-row">
-        <input type="range" id="fall-slider" min="0" max="45" step="1" value="15" />
-        <span class="slider-value"><span id="fall-value">15</span> min</span>
-      </div>
-    </div>
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-label">Time to fall asleep</div>
+            <div class="setting-sub">The average minutes you lie awake before drifting off</div>
+          </div>
+          <div class="slider-row">
+            <input type="range" id="fall-slider" min="0" max="45" step="1" value="15" aria-label="Minutes to fall asleep" />
+            <span class="slider-value"><span id="fall-value">15</span> min</span>
+          </div>
+        </div>
 
-    <div class="setting-row column">
-      <div class="setting-text">
-        <div class="setting-label">Time format</div>
-        <div class="setting-sub">How times are displayed</div>
-      </div>
-      <div class="segmented" id="format-seg">
-        <button class="seg-opt active" data-fmt="12">12-hour</button>
-        <button class="seg-opt" data-fmt="24">24-hour</button>
-      </div>
-    </div>
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-label">Time format</div>
+            <div class="setting-sub">How times are displayed</div>
+          </div>
+          <div class="segmented" id="format-seg">
+            <button class="seg-opt active" data-fmt="12">12-hour</button>
+            <button class="seg-opt" data-fmt="24">24-hour</button>
+          </div>
+        </div>
 
-    <div class="setting-row column hidden" id="install-row">
-      <div class="setting-text">
-        <div class="setting-label">Install app</div>
-        <div class="setting-sub" id="install-sub">Add Sleep Calculator to your home screen.</div>
-      </div>
-      <button class="install-btn hidden" id="install-btn">Add to home screen</button>
-    </div>
+        <!-- Android browsers only (JS shows it). GitHub serves the newest release's
+             asset at this path, so the link never needs bumping as long as each
+             release uploads the file as SleepCalculator.apk. -->
+        <div class="setting-row hidden" id="apk-row">
+          <div class="setting-text">
+            <div class="setting-label">Android app</div>
+            <div class="setting-sub">Download and install Sleep Calculator on your Android phone.</div>
+          </div>
+          <a class="install-btn" id="apk-btn"
+             href="https://github.com/aleksandarangelov06/Sleep-Calculator/releases/latest/download/SleepCalculator.apk">Download APK</a>
+        </div>
 
-    <div class="setting-row column">
-      <div class="setting-text">
-        <div class="setting-label">Delete data</div>
-        <div class="setting-sub">Reset the app and clear all saved settings on this device.</div>
-      </div>
-      <button class="delete-btn" id="delete-data-btn">Delete data</button>
-    </div>
+        <div class="setting-row hidden" id="install-row">
+          <div class="setting-text">
+            <div class="setting-label">Install app</div>
+            <div class="setting-sub" id="install-sub">Add Sleep Calculator to your home screen.</div>
+          </div>
+          <button class="install-btn hidden" id="install-btn">Add to home screen</button>
+        </div>
 
-    <!-- Studio credit + app version, pinned to the bottom of the drawer -->
-    <footer class="drawer-footer">
-      <img class="drawer-logo" src="images/pwa-icon.svg" alt="Alek Studios logo" width="40" height="40" />
-      <div class="drawer-footer-text">
-        <div class="studio-name">Alek Studios</div>
-        <div class="app-version">Version 1.0</div>
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-label">Delete data</div>
+            <div class="setting-sub">Reset the app and clear all saved settings on this device.</div>
+          </div>
+          <button class="delete-btn" id="delete-data-btn">Delete data</button>
+        </div>
       </div>
-    </footer>
+
+      <!-- Studio credit + app version, pinned to the bottom of the drawer -->
+      <footer class="drawer-footer">
+        <img class="drawer-logo" src="images/pwa-icon.svg" alt="Alek Studios logo" width="40" height="40" />
+        <div class="drawer-footer-text">
+          <div class="studio-name">Alek Studios</div>
+          <div class="app-version">Version 1.1</div>
+        </div>
+      </footer>
+    </div>
   </aside>
 
   <script src="js/app.js"></script>

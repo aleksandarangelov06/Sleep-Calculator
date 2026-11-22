@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A light framework theme by day and a dark one at night (values-night).
+         With targetSdk 33+ the WebView reports prefers-color-scheme from this,
+         which is what the page's "System" theme option reads. The window
+         background matches the page so there is no flash before it paints. -->
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
+        <item name="android:statusBarColor">@color/bar_top</item>
+        <item name="android:navigationBarColor">@color/bar_bottom</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

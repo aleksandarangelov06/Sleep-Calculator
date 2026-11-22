@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light ("dawn") theme, from css/styles.css and SKY_EDGES in js/app.js. -->
+    <color name="window_bg">#EEF1F8</color>
+    <color name="bar_top">#E6ECFA</color>
+    <color name="bar_bottom">#F6F2EC</color>
+</resources>

@@ -1,11 +1,12 @@
 /* Service worker for Sleep Calculator.
    Caches the app shell so it works offline and can be installed to a phone. */
-const CACHE = 'sleep-calc-v8';
+const CACHE = 'sleep-calc-v9';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './js/app.js',
+  './fonts/outfit-latin.woff2',
   './manifest.webmanifest',
   './images/pwa-icon.svg',
   './images/pwa-64x64.png',

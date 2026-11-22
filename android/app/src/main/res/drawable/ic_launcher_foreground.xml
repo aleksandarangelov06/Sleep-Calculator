@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The crescent and stars from images/pwa-icon.svg, kept in its 512-unit
+     coordinates and scaled into the adaptive icon's 66dp safe zone. The SVG
+     cuts the crescent with a mask, which vector drawables lack, so here it is
+     one path: an arc along the moon's circle (r154) between the two points
+     where it meets the cut-out circle (r138), then back along the cut-out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.15625"
+        android:scaleY="0.15625"
+        android:translateX="14"
+        android:translateY="14">
+        <path
+            android:fillColor="#FF58A6FF"
+            android:pathData="M232.868,105.608 A154,154 0 1,0 408.908,313.388 A138,138 0 0,1 232.868,105.608 Z" />
+        <path
+            android:fillColor="#FFCFE3FF"
+            android:pathData="M112,154 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 Z M166,338 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z M389,379 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 Z" />
+    </group>
+</vector>

@@ -2,6 +2,9 @@
 
 const CYCLE_MIN = 90;            // length of one sleep cycle
 const CYCLES = [6, 5, 4, 3];     // cycles to offer (most → least sleep)
+const MAX_CYCLES = Math.max(...CYCLES); // pips drawn per result row
+const DEFAULT_WAKE = '07:00';    // starting value for "I want to wake up at"
+const DEFAULT_BED = '22:30';     // starting value for "I want to go to bed at"
 const STORE = {
   theme: 'sleepcalc-theme',      // 'dark' | 'light' | 'system'
   fall: 'sleepcalc-fall-minutes',
@@ -19,6 +22,11 @@ let themePref = THEMES.includes(localStorage.getItem(STORE.theme))
   ? localStorage.getItem(STORE.theme)
   : 'system'; // follow the OS by default
 
+/* ---------- State (session only) ---------- */
+// Plan bedtime tab: plan from a wake-up time (gives bedtimes) or from a bedtime
+// (gives wake-up times). Not saved, so the tab always opens on "wake".
+let planFrom = 'wake'; // 'wake' | 'bed'
+
 /* ---------- Helpers ---------- */
 // Parse an int and force it into [min, max]; use fallback if not a number.
 function clampInt(raw, min, max, fallback) {
@@ -27,17 +35,32 @@ function clampInt(raw, min, max, fallback) {
   return Math.min(max, Math.max(min, n));
 }
 
-// Format a Date's time, honoring the 12/24-hour setting.
-function formatTime(date) {
+// Split a Date's time into the clock part and AM/PM, honoring the 12/24-hour
+// setting. `period` is empty in 24-hour mode.
+function timeParts(date) {
   let h = date.getHours();
   const m = date.getMinutes().toString().padStart(2, '0');
   if (timeFormat === '24') {
-    return `${h.toString().padStart(2, '0')}:${m}`;
+    return { clock: `${h.toString().padStart(2, '0')}:${m}`, period: '' };
   }
   const period = h >= 12 ? 'PM' : 'AM';
   h = h % 12;
   if (h === 0) h = 12; // 0 and 12 both display as 12
-  return `${h}:${m} ${period}`;
+  return { clock: `${h}:${m}`, period };
+}
+
+// Time as HTML, with AM/PM wrapped so it can be styled smaller than the digits.
+function timeHTML(date) {
+  const { clock, period } = timeParts(date);
+  return period ? `${clock}<span class="period"> ${period}</span>` : clock;
+}
+
+// Turn an "HH:MM" time-input value into a Date for today at that time.
+function dateFromInput(value) {
+  const [hh, mm] = value.split(':').map(Number);
+  const d = new Date();
+  d.setHours(hh, mm, 0, 0);
+  return d;
 }
 
 // "Late" = a bedtime that lands in the small hours (midnight up to 5 AM).
@@ -61,12 +84,18 @@ function effectiveTheme() {
   return themePref;
 }
 
+// Colors at the top and bottom of the sky, for the browser bar and Android's system bars.
+const SKY_EDGES = { dark: ['#0a1020', '#04060d'], light: ['#e6ecfa', '#f6f2ec'] };
+
 // Push the active theme to the page, browser UI color, and settings buttons.
 function applyTheme() {
   const theme = effectiveTheme();
+  const [top, bottom] = SKY_EDGES[theme];
   document.documentElement.setAttribute('data-theme', theme);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = theme === 'dark' ? '#000000' : '#f0f2f5'; // match browser chrome
+  if (meta) meta.content = top; // match browser chrome to the top of the sky
+  // Inside the Android app, tint the status and navigation bars the same way.
+  if (window.AndroidBars) window.AndroidBars.setBars(top, bottom, theme === 'dark');
   document.querySelectorAll('#theme-seg .seg-opt').forEach((b) =>
     b.classList.toggle('active', b.dataset.theme === themePref)
   );
@@ -76,83 +105,147 @@ function applyTheme() {
 // Make one time option card; `recommended` flags the highlighted 5-cycle pick.
 function resultRow(time, cycles, recommended) {
   const totalSleep = cycles * CYCLE_MIN;
+  // One bar per possible cycle, filled up to this option's count.
+  const pips = Array.from({ length: MAX_CYCLES }, (_, i) =>
+    `<span class="pip${i < cycles ? ' on' : ''}"></span>`
+  ).join('');
   const row = document.createElement('div');
   row.className = 'result' + (recommended ? ' recommended' : '');
   row.innerHTML = `
     <div class="result-main">
-      <span class="result-time">${formatTime(time)}</span>
+      <span class="result-time">${timeHTML(time)}</span>
       <span class="result-meta">${cycles} cycles &middot; ${formatDuration(totalSleep)} of sleep</span>
     </div>
-    ${recommended ? '<span class="result-tag">Recommended</span>' : ''}
+    <div class="result-side">
+      ${recommended ? '<span class="result-tag">Recommended</span>' : ''}
+      <span class="pips" aria-hidden="true">${pips}</span>
+    </div>
   `;
   return row;
+}
+
+/* ---------- Shared calculations ---------- */
+// Add wake-up options for someone going to bed at `bedtime`.
+// wake = bedtime + time to fall asleep + whole cycles. 5 cycles is recommended.
+function appendWakeTimes(container, bedtime) {
+  const asleepAt = new Date(bedtime.getTime() + fallMinutes * 60000);
+  CYCLES.forEach((cycles) => {
+    const wake = new Date(asleepAt.getTime() + cycles * CYCLE_MIN * 60000);
+    container.appendChild(resultRow(wake, cycles, cycles === 5));
+  });
+}
+
+// Add bedtime options for someone who must wake at `wake`, and return the
+// recommended (5-cycle) bedtime. bedtime = wake - whole cycles - time to fall asleep.
+function appendBedtimes(container, wake) {
+  let recommended = null;
+  CYCLES.forEach((cycles) => {
+    const bed = new Date(wake.getTime() - (cycles * CYCLE_MIN + fallMinutes) * 60000);
+    if (cycles === 5) recommended = bed;
+    container.appendChild(resultRow(bed, cycles, cycles === 5));
+  });
+  return recommended;
 }
 
 /* ---------- Wake-up mode: sleep now ---------- */
 function renderWake() {
   const now = new Date();
-  const asleepAt = new Date(now.getTime() + fallMinutes * 60000);
   const container = document.getElementById('wake-results');
   container.innerHTML = '';
-
-  // One row per cycle option; 5 cycles (~7.5h) is the recommended pick.
-  CYCLES.forEach((cycles) => {
-    const wake = new Date(asleepAt.getTime() + cycles * CYCLE_MIN * 60000);
-    container.appendChild(resultRow(wake, cycles, cycles === 5));
-  });
-
-  // Heading to bed "right now" — warn if right now is the small hours.
-  document.getElementById('wake-warning').classList.toggle('hidden', !isLateBedtime(now));
-
+  document.getElementById('now-time').innerHTML = timeHTML(now);
   document.getElementById('fall-note').textContent = fallMinutes;
+
+  appendWakeTimes(container, now);
+
+  // Heading to bed "right now": warn if right now is the small hours.
+  document.getElementById('wake-warning').classList.toggle('hidden', !isLateBedtime(now));
 }
 
-/* ---------- Bedtime mode: work backward from wake time ---------- */
+/* ---------- Plan bedtime mode: from a wake-up time or a bedtime ---------- */
+// Copy that changes with the "Wake up at" / "Go to bed at" switch.
+const PLAN_COPY = {
+  wake: {
+    sub: 'We’ll work backward so you wake up at the end of a full sleep cycle.',
+    label: 'Best times to go to bed',
+    empty: 'Choose a wake-up time above to see when to head to bed.',
+    warning: 'Your recommended bedtime is past midnight. Going to bed this late can disrupt your body clock and lower sleep quality. Aim for an earlier wake-up time when you can.',
+  },
+  bed: {
+    sub: 'We’ll count forward so your alarm goes off at the end of a full sleep cycle.',
+    label: 'Best times to wake up',
+    empty: 'Choose a bedtime above to see when to set your alarm.',
+    warning: 'That bedtime is past midnight. Going to bed this late can disrupt your body clock and lower sleep quality.',
+  },
+};
+
 function renderBed() {
-  const input = document.getElementById('wake-input');
+  const fromBed = planFrom === 'bed';
+  const input = document.getElementById(fromBed ? 'bed-input' : 'wake-input');
   const container = document.getElementById('bed-results');
+  const warning = document.getElementById('bed-warning');
   document.getElementById('fall-note-2').textContent = fallMinutes;
   container.innerHTML = '';
 
   if (!input.value) {
-    container.innerHTML = '<p class="footnote">Choose a wake-up time above to see when to head to bed.</p>';
-    document.getElementById('bed-warning').classList.add('hidden');
+    container.innerHTML = `<p class="footnote">${PLAN_COPY[planFrom].empty}</p>`;
+    warning.classList.add('hidden');
     return;
   }
 
-  const [hh, mm] = input.value.split(':').map(Number);
-  const wake = new Date();
-  wake.setHours(hh, mm, 0, 0);
-  // Wake time is always interpreted as the next occurrence.
-  if (wake <= new Date()) wake.setDate(wake.getDate() + 1);
+  let lateBedtime;
+  if (fromBed) {
+    // Count forward from the chosen bedtime; warn if that bedtime is in the small hours.
+    const bedtime = dateFromInput(input.value);
+    appendWakeTimes(container, bedtime);
+    lateBedtime = isLateBedtime(bedtime);
+  } else {
+    // Work backward from the next occurrence of the wake time;
+    // warn when the recommended bedtime falls in the small hours.
+    const wake = dateFromInput(input.value);
+    if (wake <= new Date()) wake.setDate(wake.getDate() + 1);
+    lateBedtime = isLateBedtime(appendBedtimes(container, wake));
+  }
+  warning.classList.toggle('hidden', !lateBedtime);
+}
 
-  // For each cycle count, bedtime = wake - sleep - time to fall asleep.
-  let recommendedBed = null;
-  CYCLES.forEach((cycles) => {
-    const bed = new Date(wake.getTime() - (cycles * CYCLE_MIN + fallMinutes) * 60000);
-    if (cycles === 5) recommendedBed = bed;
-    container.appendChild(resultRow(bed, cycles, cycles === 5));
+// Flip the plan tab between planning from a wake-up time and from a bedtime.
+function setPlanFrom(from) {
+  planFrom = from;
+  const fromBed = from === 'bed';
+  document.querySelectorAll('#plan-seg .seg-opt').forEach((b) => {
+    const on = b.dataset.from === from;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
   });
+  document.getElementById('from-wake').hidden = fromBed;
+  document.getElementById('from-bed').hidden = !fromBed;
 
-  // Warn when the recommended bedtime falls in the small hours.
-  document.getElementById('bed-warning')
-    .classList.toggle('hidden', !(recommendedBed && isLateBedtime(recommendedBed)));
+  const copy = PLAN_COPY[from];
+  document.getElementById('plan-sub').textContent = copy.sub;
+  document.getElementById('plan-label').textContent = copy.label;
+  document.getElementById('bed-warning-text').textContent = copy.warning;
+  renderActive();
 }
 
 /* ---------- Re-render whichever panel is active ---------- */
+function isWakePanelActive() {
+  return !document.getElementById('panel-wake').classList.contains('hidden');
+}
 function renderActive() {
-  if (!document.getElementById('panel-wake').classList.contains('hidden')) {
-    renderWake();
-  } else {
-    renderBed();
-  }
+  if (isWakePanelActive()) renderWake();
+  else renderBed();
 }
 
 /* ---------- Tab switching ---------- */
 function switchTab(target) {
   const wake = target === 'wake';
-  document.getElementById('tab-wake').classList.toggle('active', wake);
-  document.getElementById('tab-bed').classList.toggle('active', !wake);
+  const tabWake = document.getElementById('tab-wake');
+  const tabBed = document.getElementById('tab-bed');
+  document.querySelector('.tabs').dataset.active = wake ? 'wake' : 'bed'; // slides the pill
+  tabWake.classList.toggle('active', wake);
+  tabBed.classList.toggle('active', !wake);
+  tabWake.setAttribute('aria-selected', String(wake));
+  tabBed.setAttribute('aria-selected', String(!wake));
   document.getElementById('panel-wake').classList.toggle('hidden', !wake);
   document.getElementById('panel-bed').classList.toggle('hidden', wake);
   renderActive();
@@ -174,6 +267,23 @@ function closeDrawer() {
   document.body.classList.remove('drawer-open');
 }
 
+// Android back button: the APK asks the page first. Close Settings if it's
+// open and report the press as handled; otherwise the app goes back as usual.
+window.handleBack = () => {
+  if (!document.getElementById('drawer').classList.contains('open')) return false;
+  closeDrawer();
+  return true;
+};
+
+/* ---------- Fall-asleep slider ---------- */
+// Reflect fallMinutes in the slider, its readout, and the filled part of the track.
+function syncFallUI() {
+  const slider = document.getElementById('fall-slider');
+  slider.value = fallMinutes;
+  slider.style.setProperty('--fill', `${(fallMinutes / Number(slider.max)) * 100}%`);
+  document.getElementById('fall-value').textContent = fallMinutes;
+}
+
 /* ---------- Delete data / reset ---------- */
 // Clear saved settings and return the app to its first-run defaults.
 function deleteData() {
@@ -189,14 +299,14 @@ function deleteData() {
 
   // Reflect the reset across the settings UI and results.
   applyTheme(); // also re-highlights the theme buttons
-  document.getElementById('fall-slider').value = fallMinutes;
-  document.getElementById('fall-value').textContent = fallMinutes;
+  syncFallUI();
   document.querySelectorAll('#format-seg .seg-opt').forEach((b) =>
     b.classList.toggle('active', b.dataset.fmt === timeFormat)
   );
-  document.getElementById('wake-input').value = '07:00'; // default wake time
-  if (desktopMql.matches) { tpBuildColumns(); tpRender(); }
-  renderActive();
+  document.getElementById('wake-input').value = DEFAULT_WAKE;
+  document.getElementById('bed-input').value = DEFAULT_BED;
+  refreshPickers();
+  setPlanFrom('wake'); // also re-renders
 }
 
 /* ---------- Wire up ---------- */
@@ -204,8 +314,7 @@ function init() {
   applyTheme();
 
   // Init settings UI
-  document.getElementById('fall-slider').value = fallMinutes;
-  document.getElementById('fall-value').textContent = fallMinutes;
+  syncFallUI();
   document.querySelectorAll('#format-seg .seg-opt').forEach((b) =>
     b.classList.toggle('active', b.dataset.fmt === timeFormat)
   );
@@ -237,7 +346,7 @@ function init() {
   // Fall-asleep slider
   document.getElementById('fall-slider').addEventListener('input', (e) => {
     fallMinutes = parseInt(e.target.value, 10);
-    document.getElementById('fall-value').textContent = fallMinutes;
+    syncFallUI();
     localStorage.setItem(STORE.fall, fallMinutes);
     renderActive();
   });
@@ -251,27 +360,35 @@ function init() {
     document.querySelectorAll('#format-seg .seg-opt').forEach((b) =>
       b.classList.toggle('active', b === btn)
     );
-    // Rebuild the desktop picker so its hour column / AM-PM match the new format.
-    if (desktopMql.matches) { tpBuildColumns(); tpRender(); }
+    // Rebuild the desktop pickers so their hour column / AM-PM match the new format.
+    refreshPickers();
     renderActive();
   });
 
   // Delete data / reset to defaults
   document.getElementById('delete-data-btn').addEventListener('click', deleteData);
 
-  // Bedtime input
-  document.getElementById('wake-input').addEventListener('input', renderBed);
+  // Plan bedtime tab: "Wake up at" / "Go to bed at" switch
+  document.getElementById('plan-seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-opt');
+    if (btn) setPlanFrom(btn.dataset.from);
+  });
 
-  // Default wake-up time: 7:00 AM
-  document.getElementById('wake-input').value = '07:00';
+  // Both time inputs live in the plan bedtime tab
+  const wakeInput = document.getElementById('wake-input');
+  const bedInput = document.getElementById('bed-input');
+  wakeInput.value = DEFAULT_WAKE;
+  bedInput.value = DEFAULT_BED;
+  wakeInput.addEventListener('input', renderBed);
+  bedInput.addEventListener('input', renderBed);
 
-  // Swap to the custom picker on desktop (reads the value set just above)
-  setupTimePicker();
+  // Swap to the custom pickers on desktop (reads the values set just above)
+  setupTimePickers();
 
   // First render + keep "sleep now" fresh every 30s
   renderActive();
   setInterval(() => {
-    if (!document.getElementById('panel-wake').classList.contains('hidden')) renderWake();
+    if (isWakePanelActive()) renderWake();
   }, 30000);
 }
 
@@ -280,178 +397,197 @@ function init() {
 // unstylable OS dropdown. We swap in a custom picker there and keep the native
 // input on touch, where its OS wheel is genuinely better. The native input
 // stays the single source of truth: the picker reads/writes its value and
-// fires an 'input' event so renderBed() runs unchanged.
+// fires an 'input' event so the render functions run unchanged.
+// Each time input on the page gets its own TimePicker instance.
 const desktopMql = window.matchMedia('(hover: hover) and (pointer: fine)');
 const MIN_STEP = 5; // minute granularity in the custom columns
-let tpWired = false;
+const pickers = []; // every TimePicker on the page
 
-// Collect the picker's DOM elements in one object.
-function tpEls() {
-  return {
-    input: document.getElementById('wake-input'),
-    picker: document.getElementById('time-picker'),
-    display: document.getElementById('time-display'),
-    text: document.getElementById('time-display-text'),
-    pop: document.getElementById('time-pop'),
-    colHour: document.getElementById('col-hour'),
-    colMin: document.getElementById('col-min'),
-    colAmpm: document.getElementById('col-ampm'),
-  };
-}
+const pad2 = (n) => String(n).padStart(2, '0');
 
-// Read the native input's value as { h, m } in 24-hour terms.
-function tpGetValue() {
-  const [h, m] = (tpEls().input.value || '07:00').split(':').map(Number);
-  return { h, m };
-}
+class TimePicker {
+  // `input` is the native time input this picker drives; `label` names the popup
+  // for screen readers; `fallback` is used if the input is ever empty.
+  constructor(input, label, fallback) {
+    this.input = input;
+    this.fallback = fallback;
 
-// Write back to the native input and notify the rest of the app.
-function tpSetValue(h, m) {
-  const input = tpEls().input;
-  input.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  tpRender();
-}
+    this.root = document.createElement('div');
+    this.root.className = 'time-picker';
+    this.root.hidden = true;
+    this.root.innerHTML = `
+      <button type="button" class="time-display" aria-haspopup="dialog" aria-expanded="false">
+        <span class="time-display-text"></span>
+        <svg class="time-display-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      <div class="time-pop" hidden role="dialog" aria-label="${label}">
+        <div class="time-cols">
+          <div class="time-col-wrap">
+            <span class="time-col-label">Hour</span>
+            <div class="time-col" data-col="hour" role="listbox" aria-label="Hour"></div>
+          </div>
+          <div class="time-col-wrap">
+            <span class="time-col-label">Min</span>
+            <div class="time-col" data-col="min" role="listbox" aria-label="Minute"></div>
+          </div>
+        </div>
+        <div class="time-ampm" data-col="ampm" role="listbox" aria-label="AM or PM"></div>
+      </div>
+    `;
+    input.after(this.root);
 
-// Build one clickable option button for a column.
-function tpOption(label, type, value) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'time-opt';
-  b.textContent = label;
-  b.dataset.type = type;
-  b.dataset.value = value;
-  b.setAttribute('role', 'option');
-  b.addEventListener('click', () => tpPick(type, value));
-  return b;
-}
+    const find = (sel) => this.root.querySelector(sel);
+    this.display = find('.time-display');
+    this.text = find('.time-display-text');
+    this.pop = find('.time-pop');
+    this.colHour = find('[data-col="hour"]');
+    this.colMin = find('[data-col="min"]');
+    this.colAmpm = find('[data-col="ampm"]');
 
-// (Re)build the option columns for the current 12/24-hour format.
-function tpBuildColumns() {
-  const { colHour, colMin, colAmpm } = tpEls();
-  const is12 = timeFormat === '12';
-  colHour.innerHTML = '';
-  colMin.innerHTML = '';
-  colAmpm.innerHTML = '';
-
-  const hours = is12
-    ? Array.from({ length: 12 }, (_, i) => i + 1)
-    : Array.from({ length: 24 }, (_, i) => i);
-  hours.forEach((h) =>
-    colHour.appendChild(tpOption(is12 ? String(h) : String(h).padStart(2, '0'), 'hour', h))
-  );
-
-  for (let m = 0; m < 60; m += MIN_STEP) {
-    colMin.appendChild(tpOption(String(m).padStart(2, '0'), 'min', m));
+    // Close when a click lands anywhere outside this picker.
+    this.onOutside = (e) => { if (!this.root.contains(e.target)) this.close(); };
+    this.display.addEventListener('click', () => (this.pop.hidden ? this.open() : this.close()));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
   }
 
-  colAmpm.hidden = !is12;
-  if (is12) ['AM', 'PM'].forEach((p) => colAmpm.appendChild(tpOption(p, 'ampm', p)));
-}
+  // Read the native input's value as { h, m } in 24-hour terms.
+  getValue() {
+    const [h, m] = (this.input.value || this.fallback).split(':').map(Number);
+    return { h, m };
+  }
 
-// Apply a clicked option, converting 12-hour selections back to 24-hour.
-function tpPick(type, value) {
-  let { h, m } = tpGetValue();
-  if (type === 'min') {
-    m = Number(value);
-  } else if (type === 'hour') {
-    const hr = Number(value);
-    if (timeFormat === '12') {
-      h = (hr % 12) + (h >= 12 ? 12 : 0); // keep current AM/PM
-    } else {
-      h = hr;
+  // Write back to the native input and notify the rest of the app.
+  setValue(h, m) {
+    this.input.value = `${pad2(h)}:${pad2(m)}`;
+    this.input.dispatchEvent(new Event('input', { bubbles: true }));
+    this.render();
+  }
+
+  // Build one clickable option button for a column.
+  option(label, type, value) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'time-opt';
+    b.textContent = label;
+    b.dataset.value = value;
+    b.setAttribute('role', 'option');
+    b.addEventListener('click', () => this.pick(type, value));
+    return b;
+  }
+
+  // (Re)build the option columns for the current 12/24-hour format.
+  build() {
+    const is12 = timeFormat === '12';
+    this.colHour.innerHTML = '';
+    this.colMin.innerHTML = '';
+    this.colAmpm.innerHTML = '';
+
+    const hours = is12
+      ? Array.from({ length: 12 }, (_, i) => i + 1)
+      : Array.from({ length: 24 }, (_, i) => i);
+    hours.forEach((h) =>
+      this.colHour.appendChild(this.option(is12 ? String(h) : pad2(h), 'hour', h))
+    );
+
+    for (let m = 0; m < 60; m += MIN_STEP) {
+      this.colMin.appendChild(this.option(pad2(m), 'min', m));
     }
-  } else if (type === 'ampm') {
-    const wantPm = value === 'PM';
-    if (wantPm && h < 12) h += 12;
-    else if (!wantPm && h >= 12) h -= 12;
+
+    this.colAmpm.hidden = !is12;
+    if (is12) ['AM', 'PM'].forEach((p) => this.colAmpm.appendChild(this.option(p, 'ampm', p)));
   }
-  tpSetValue(h, m);
+
+  // Apply a clicked option, converting 12-hour selections back to 24-hour.
+  pick(type, value) {
+    let { h, m } = this.getValue();
+    if (type === 'min') {
+      m = Number(value);
+    } else if (type === 'hour') {
+      const hr = Number(value);
+      h = timeFormat === '12' ? (hr % 12) + (h >= 12 ? 12 : 0) : hr; // keep current AM/PM
+    } else if (type === 'ampm') {
+      const wantPm = value === 'PM';
+      if (wantPm && h < 12) h += 12;
+      else if (!wantPm && h >= 12) h -= 12;
+    }
+    this.setValue(h, m);
+  }
+
+  // Sync the display label + highlighted options to the current value.
+  render() {
+    const { h, m } = this.getValue();
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    this.text.innerHTML = timeHTML(d); // respects the 12/24-hour setting
+
+    const highlight = (col, value) =>
+      col.querySelectorAll('.time-opt').forEach((b) =>
+        b.classList.toggle('selected', b.dataset.value === value)
+      );
+    highlight(this.colHour, String(timeFormat === '12' ? (h % 12 || 12) : h));
+    highlight(this.colMin, String(m));
+    highlight(this.colAmpm, h >= 12 ? 'PM' : 'AM');
+  }
+
+  // Center the selected hour/minute without scrolling the page.
+  scrollSelected() {
+    [this.colHour, this.colMin].forEach((col) => {
+      const sel = col.querySelector('.time-opt.selected');
+      if (sel) col.scrollTop = sel.offsetTop - (col.clientHeight - sel.clientHeight) / 2;
+    });
+  }
+
+  // Open the popup, center the selection, and watch for outside clicks.
+  open() {
+    this.pop.hidden = false;
+    this.display.classList.add('open');
+    this.display.setAttribute('aria-expanded', 'true');
+    this.scrollSelected();
+    document.addEventListener('click', this.onOutside, true);
+  }
+
+  // Close the popup and detach the outside-click listener.
+  close() {
+    if (this.pop.hidden) return;
+    this.pop.hidden = true;
+    this.display.classList.remove('open');
+    this.display.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', this.onOutside, true);
+  }
+
+  // Show the custom picker (desktop) or the native input (touch).
+  activate(on) {
+    if (on) {
+      this.build();
+      this.input.hidden = true;
+      this.root.hidden = false;
+      this.render();
+    } else {
+      this.input.hidden = false;
+      this.root.hidden = true;
+      this.close();
+    }
+  }
 }
 
-// Mark the option matching `value` as selected within one column.
-function tpHighlight(col, value) {
-  col.querySelectorAll('.time-opt').forEach((b) =>
-    b.classList.toggle('selected', b.dataset.value === value)
+// Rebuild every picker (after the time format or the values change).
+function refreshPickers() {
+  if (!desktopMql.matches) return;
+  pickers.forEach((p) => { p.build(); p.render(); });
+}
+
+function setupTimePickers() {
+  pickers.push(
+    new TimePicker(document.getElementById('wake-input'), 'Choose wake-up time', DEFAULT_WAKE),
+    new TimePicker(document.getElementById('bed-input'), 'Choose bedtime', DEFAULT_BED)
   );
-}
-
-// Sync the display label + highlighted options to the current value.
-function tpRender() {
-  const { text, colHour, colMin, colAmpm } = tpEls();
-  const { h, m } = tpGetValue();
-
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  text.textContent = formatTime(d); // respects the 12/24-hour setting
-
-  const hourVal = timeFormat === '12' ? (h % 12 || 12) : h;
-  tpHighlight(colHour, String(hourVal));
-  tpHighlight(colMin, String(m));
-  tpHighlight(colAmpm, h >= 12 ? 'PM' : 'AM');
-}
-
-// Center the selected hour/minute without scrolling the page.
-function tpScrollSelected() {
-  const { colHour, colMin } = tpEls();
-  [colHour, colMin].forEach((col) => {
-    const sel = col.querySelector('.time-opt.selected');
-    if (sel) col.scrollTop = sel.offsetTop - (col.clientHeight - sel.clientHeight) / 2;
-  });
-}
-
-// Open the popup, center the selection, and watch for outside clicks.
-function tpOpen() {
-  const { pop, display } = tpEls();
-  pop.hidden = false;
-  display.classList.add('open');
-  display.setAttribute('aria-expanded', 'true');
-  tpScrollSelected();
-  document.addEventListener('click', tpOutside, true);
-}
-// Close the popup and detach the outside-click listener.
-function tpClose() {
-  const { pop, display } = tpEls();
-  if (pop.hidden) return;
-  pop.hidden = true;
-  display.classList.remove('open');
-  display.setAttribute('aria-expanded', 'false');
-  document.removeEventListener('click', tpOutside, true);
-}
-// Close when a click lands anywhere outside the picker.
-function tpOutside(e) {
-  if (!tpEls().picker.contains(e.target)) tpClose();
-}
-
-// One-time wiring: toggle button + Escape to close.
-function tpWire() {
-  const { display } = tpEls();
-  display.addEventListener('click', () => (tpEls().pop.hidden ? tpOpen() : tpClose()));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') tpClose();
-  });
-}
-
-// Show the custom picker (desktop) or the native input (touch).
-function tpActivate(on) {
-  const { input, picker } = tpEls();
-  if (on) {
-    if (!tpWired) { tpWire(); tpWired = true; }
-    tpBuildColumns();
-    input.hidden = true;
-    picker.hidden = false;
-    tpRender();
-  } else {
-    input.hidden = false;
-    picker.hidden = true;
-    tpClose();
-  }
-}
-
-function setupTimePicker() {
-  tpActivate(desktopMql.matches);
+  const activateAll = (on) => pickers.forEach((p) => p.activate(on));
+  activateAll(desktopMql.matches);
   // Adapt live if a hybrid device switches between mouse and touch.
-  desktopMql.addEventListener('change', (e) => tpActivate(e.matches));
+  desktopMql.addEventListener('change', (e) => activateAll(e.matches));
 }
 
 /* ---------- PWA: service worker + install ---------- */
@@ -471,10 +607,12 @@ function isLocalhost() {
 // Register the service worker and drive the "install app" settings row.
 function setupPWA() {
   if ('serviceWorker' in navigator) {
-    if (isLocalhost()) {
+    if (isLocalhost() || isAndroidApp()) {
       // Local dev (e.g. Live Server): never cache. Remove any worker left from a
       // previous session and clear its caches so edits always show on reload —
       // no more manually clearing site data.
+      // The Android app serves every file from its own bundled copy, so a cache
+      // there would only keep serving old files after an app update.
       navigator.serviceWorker.getRegistrations()
         .then((regs) => regs.forEach((reg) => reg.unregister()));
       if (window.caches) {
@@ -492,7 +630,8 @@ function setupPWA() {
   const btn = document.getElementById('install-btn');
   const sub = document.getElementById('install-sub');
 
-  if (isStandalone()) return; // already installed — leave the row hidden
+  // Already installed (as a PWA or the Android app): leave the row hidden.
+  if (isStandalone() || isAndroidApp()) return;
 
   let deferredPrompt = null;
 
@@ -524,8 +663,25 @@ function setupPWA() {
   }
 }
 
+/* ---------- Android APK download ---------- */
+// Inside an APK the page is served from the WebView's asset host
+// (same setup as Alek Weather), so the offer hides there.
+function isAndroidApp() {
+  return location.hostname === 'appassets.androidplatform.net';
+}
+// An Android phone or tablet in a browser. The APK is Android-only, so
+// iPhones and desktops never see the offer.
+function isAndroidWeb() {
+  return !isAndroidApp() && /Android/i.test(navigator.userAgent);
+}
+
+function setupApk() {
+  if (isAndroidWeb()) document.getElementById('apk-row').classList.remove('hidden');
+}
+
 // Boot the app once the DOM is ready.
 document.addEventListener('DOMContentLoaded', () => {
   init();
   setupPWA();
+  setupApk();
 });
