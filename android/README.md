@@ -4,8 +4,8 @@ Packages the web app as a sideloadable Android app. The website stays the single
 source of truth: the APK is one WebView showing a copy of the same files that
 GitHub Pages serves, so there is no second UI to keep in sync.
 
-Same approach as Alek Weather's `android/` folder, minus everything this app
-doesn't need (notifications, the self-updater, the native launch screen).
+Same approach as Alek Weather's `android/` folder, including its self-updater,
+minus everything this app doesn't need (notifications, the native launch screen).
 
 ## How it works
 
@@ -21,6 +21,12 @@ doesn't need (notifications, the self-updater, the native launch screen).
   through `window.AndroidBars.setBars` whenever its theme changes.
 - **Back** asks the page first (`window.handleBack`), which closes Settings if
   it's open; otherwise back leaves the app.
+- **Updates:** Settings shows "Check for updates" inside the app only. It asks
+  the GitHub Releases API for the latest release (`window.AndroidUpdate.check`),
+  compares its tag (`v1.2` reads as `1.2`) with the installed `versionName`, and
+  on Update downloads that release's `.apk` and opens the system installer.
+  The first time, Android asks to allow installs from Sleep Calculator. Results
+  reach the page as `sleepupdate` / `sleepupdateprogress` events.
 
 ## Build
 
@@ -46,9 +52,11 @@ Alek Weather.
    versionCode 12, like Alek Weather), and the "Version" line in the Settings
    footer in `index.html`.
 2. Build with `-Release`.
-3. Create a GitHub release and upload the file as exactly `SleepCalculator.apk`.
-   The site's Download APK button links to
-   `releases/latest/download/SleepCalculator.apk`, so it always gets the newest one.
+3. Create a GitHub release tagged `v<versionName>` (e.g. `v1.2`) and upload the
+   file as exactly `SleepCalculator.apk`. The site's Download APK button links to
+   `releases/latest/download/SleepCalculator.apk`, so it always gets the newest
+   one, and the in-app updater reads the tag to decide whether it's newer. Keep
+   the tag a plain number: a suffix like `-beta` reads as an older version.
 
 Every release must be signed with the same key, or Android refuses to install
 it over the previous version.

@@ -22,8 +22,8 @@ android {
         // versionCode must increase on every published build; versionName is
         // the human one, kept in step with "Version" in the Settings footer.
         // Same scheme as Alek Weather: 1.1 -> 11, 1.2 -> 12.
-        versionCode 11
-        versionName "1.1"
+        versionCode 12
+        versionName "1.2"
 
         // The UI is the bundled web page, in English; drop the library strings
         // shipped for ~85 other languages that the page never shows.
@@ -67,4 +67,6 @@ dependencies {
     // WebViewAssetLoader: serves the bundled web app over a real https origin
     // instead of file://, so localStorage behaves like it does on the website.
     implementation 'androidx.webkit:webkit:1.10.0'
+    // FileProvider: hands the self-updater's downloaded APK to the system installer.
+    implementation 'androidx.core:core:1.9.0'
 }

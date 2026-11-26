@@ -9,6 +9,11 @@ const STORE = {
   theme: 'sleepcalc-theme',      // 'dark' | 'light' | 'system'
   fall: 'sleepcalc-fall-minutes',
   format: 'sleepcalc-time-format', // '12' | '24'
+  weather: 'sleepcalc-weather',  // last forecast, so the card shows instantly and offline
+  weatherOpen: 'sleepcalc-weather-open', // '1' when the forecast card is expanded
+  weatherOn: 'sleepcalc-weather-on',     // '0' when the forecast is turned off
+  weatherUnit: 'sleepcalc-weather-unit', // 'F' | 'C'; absent = automatic
+  weatherCity: 'sleepcalc-weather-city', // chosen city as JSON; absent = automatic
 };
 
 const THEMES = ['light', 'dark', 'system']; // valid theme choices
@@ -159,6 +164,392 @@ function renderWake() {
 
   // Heading to bed "right now": warn if right now is the small hours.
   document.getElementById('wake-warning').classList.toggle('hidden', !isLateBedtime(now));
+  renderWeather();
+}
+
+/* ---------- Weather for the wake-up day (Sleep now tab) ---------- */
+// Forecast from Open-Meteo. Location is either a city picked in Settings or,
+// by default, found the way Alek Weather does it: precise location only if the
+// browser has already granted it (this never prompts), otherwise BigDataCloud's
+// IP lookup, which is city-level. Cached for an hour, so tab switches and the
+// 30s refresh never refetch. Temperatures are fetched in °C and converted on
+// display, so changing units never needs a refetch.
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+const LOCATE_URL = 'https://api-bdc.io/data/reverse-geocode-client?localityLanguage=en';
+const WEATHER_FRESH_MS = 60 * 60 * 1000;           // refetch after an hour
+const WEATHER_MAX_AGE_MS = 24 * 60 * 60 * 1000;    // older than this is never shown
+const FAHRENHEIT_COUNTRIES = ['US', 'LR', 'MM', 'BS', 'BZ', 'KY', 'PW'];
+
+// WMO weather codes (what Open-Meteo returns) -> label and icon.
+const WEATHER_CODES = {
+  0: ['Clear sky', 'sun'], 1: ['Mainly clear', 'sun'], 2: ['Partly cloudy', 'partly'],
+  3: ['Overcast', 'cloud'], 45: ['Foggy', 'fog'], 48: ['Freezing fog', 'fog'],
+  51: ['Light drizzle', 'rain'], 53: ['Drizzle', 'rain'], 55: ['Heavy drizzle', 'rain'],
+  56: ['Freezing drizzle', 'rain'], 57: ['Freezing drizzle', 'rain'],
+  61: ['Light rain', 'rain'], 63: ['Rain', 'rain'], 65: ['Heavy rain', 'rain'],
+  66: ['Freezing rain', 'rain'], 67: ['Freezing rain', 'rain'],
+  71: ['Light snow', 'snow'], 73: ['Snow', 'snow'], 75: ['Heavy snow', 'snow'],
+  77: ['Snow grains', 'snow'], 80: ['Light showers', 'rain'], 81: ['Showers', 'rain'],
+  82: ['Heavy showers', 'rain'], 85: ['Snow showers', 'snow'], 86: ['Heavy snow showers', 'snow'],
+  95: ['Thunderstorms', 'storm'], 96: ['Strong thunderstorms', 'storm'], 99: ['Severe thunderstorms', 'storm'],
+};
+
+// Inner SVG for each icon (24x24, stroked).
+const CLOUD_BASE = '<path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.24"/>';
+const WEATHER_ICONS = {
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  partly: '<path d="M12 2v2M4.93 4.93l1.41 1.41M20 12h2M19.07 4.93l-1.41 1.41"/><path d="M15.95 12.65a4 4 0 0 0-5.93-4.13"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  fog: CLOUD_BASE + '<path d="M16 17H7M17 21H9"/>',
+  rain: CLOUD_BASE + '<path d="M16 14v6M8 14v6M12 16v6"/>',
+  snow: CLOUD_BASE + '<path d="M8 15h.01M8 19h.01M12 17h.01M12 21h.01M16 15h.01M16 19h.01"/>',
+  storm: '<path d="M6 16.33A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.97"/><path d="m13 12-3 5h4l-3 5"/>',
+};
+
+/* Weather settings (persisted) */
+let weatherOn = localStorage.getItem(STORE.weatherOn) !== '0';   // on unless turned off
+let weatherUnit = ['F', 'C'].includes(localStorage.getItem(STORE.weatherUnit))
+  ? localStorage.getItem(STORE.weatherUnit)
+  : 'auto';                                                      // 'auto' | 'F' | 'C'
+let weatherCity = readSavedCity(); // { name, region, lat, lon, country }, or null for automatic
+
+let weather = readCachedWeather(); // { at, key, place, country, daily (°C) } or null
+let weatherLoading = false;
+
+function readSavedCity() {
+  try {
+    const c = JSON.parse(localStorage.getItem(STORE.weatherCity));
+    return c && typeof c.lat === 'number' && typeof c.lon === 'number' ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+// Identifies where a forecast is for, so a cached one is never shown for the wrong place.
+function locationKey() {
+  return weatherCity ? `${weatherCity.lat.toFixed(2)},${weatherCity.lon.toFixed(2)}` : 'auto';
+}
+
+function readCachedWeather() {
+  try {
+    const w = JSON.parse(localStorage.getItem(STORE.weather));
+    return w && w.daily && w.key && Date.now() - w.at < WEATHER_MAX_AGE_MS ? w : null;
+  } catch {
+    return null;
+  }
+}
+
+// The unit to display: the chosen one, or by country when set to automatic.
+function tempUnit() {
+  if (weatherUnit !== 'auto') return weatherUnit;
+  const country = weatherCity ? weatherCity.country : weather && weather.country;
+  return FAHRENHEIT_COUNTRIES.includes(country) ? 'F' : 'C';
+}
+const showTemp = (c) => `${Math.round(tempUnit() === 'F' ? c * 9 / 5 + 32 : c)}°`;
+
+// fetch() that gives up after `ms` and treats a non-2xx reply as a failure.
+function fetchJSON(url, ms = 8000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal })
+    .then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .finally(() => clearTimeout(timer));
+}
+
+// Where the device is, without ever showing a location prompt.
+async function locate() {
+  let query = '';
+  try {
+    const status = await navigator.permissions?.query({ name: 'geolocation' });
+    if (status?.state === 'granted') {
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { maximumAge: 30 * 60000, timeout: 8000 })
+      );
+      // City-level is plenty for a daily forecast, and sends less to third parties.
+      query = `&latitude=${pos.coords.latitude.toFixed(2)}&longitude=${pos.coords.longitude.toFixed(2)}`;
+    }
+  } catch { /* no Permissions API (Android WebView) or no fix: fall back to IP */ }
+  const d = await fetchJSON(LOCATE_URL + query);
+  if (typeof d.latitude !== 'number' || typeof d.longitude !== 'number') throw new Error('No location');
+  return {
+    lat: d.latitude,
+    lon: d.longitude,
+    place: d.city || d.locality || d.principalSubdivision || '',
+    country: d.countryCode || '',
+  };
+}
+
+// Fetch a forecast unless the cached one is for this place and under an hour
+// old. `force` refetches anyway (after the location changes).
+async function loadWeather(force = false) {
+  if (!weatherOn || weatherLoading) return;
+  const key = locationKey();
+  if (!force && weather && weather.key === key && Date.now() - weather.at < WEATHER_FRESH_MS) return;
+  weatherLoading = true;
+  try {
+    const loc = weatherCity
+      ? { lat: weatherCity.lat, lon: weatherCity.lon, place: weatherCity.name, country: weatherCity.country }
+      : await locate();
+    const params = new URLSearchParams({
+      latitude: loc.lat.toFixed(2),
+      longitude: loc.lon.toFixed(2),
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise',
+      timezone: 'auto',
+      forecast_days: '3',
+    });
+    const f = await fetchJSON(`${FORECAST_URL}?${params}`);
+    if (!f.daily || !Array.isArray(f.daily.time)) throw new Error('No forecast');
+    // Ignore a reply for a place that was changed while it was on its way.
+    if (key === locationKey()) {
+      weather = { at: Date.now(), key, place: loc.place, country: loc.country, daily: f.daily };
+      localStorage.setItem(STORE.weather, JSON.stringify(weather));
+    }
+  } catch {
+    // Offline or blocked: keep showing the cached forecast, if there is one.
+  } finally {
+    weatherLoading = false;
+  }
+  // The place changed mid-fetch: fetch again for the new one.
+  if (key !== locationKey()) {
+    loadWeather(true);
+    return;
+  }
+  if (isWakePanelActive()) renderWeather();
+  renderWeatherSettings();
+}
+
+// Collapse the forecast to its one-line summary, or open the full card.
+function setWeatherOpen(open) {
+  document.getElementById('weather').classList.toggle('open', open);
+  document.getElementById('weather-details').hidden = !open;
+  document.getElementById('weather-toggle').setAttribute('aria-expanded', String(open));
+}
+
+// "YYYY-MM-DD" in local time, the format Open-Meteo's daily.time uses.
+function isoDate(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+// Fill the card with the forecast for the day of the recommended wake-up.
+function renderWeather() {
+  const card = document.getElementById('weather');
+  const d = weatherOn && weather && weather.key === locationKey() && weather.daily;
+  const wake = new Date(Date.now() + (fallMinutes + 5 * CYCLE_MIN) * 60000);
+  const i = d ? d.time.indexOf(isoDate(wake)) : -1;
+  if (i < 0 || d.temperature_2m_max[i] == null) {
+    card.hidden = true;
+    return;
+  }
+
+  const today = new Date();
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const day = isoDate(wake) === isoDate(today) ? 'Today'
+    : isoDate(wake) === isoDate(tomorrow) ? 'Tomorrow'
+      : wake.toLocaleDateString(undefined, { weekday: 'long' });
+  document.getElementById('weather-day').textContent = day;
+  document.getElementById('weather-place').textContent = weather.place;
+
+  const [label, icon] = WEATHER_CODES[d.weather_code[i]] || ['Mixed conditions', 'cloud'];
+  const hi = showTemp(d.temperature_2m_max[i]);
+  const lo = showTemp(d.temperature_2m_min[i]);
+  document.getElementById('weather-icon').innerHTML = WEATHER_ICONS[icon];
+  document.getElementById('weather-line-icon').innerHTML = WEATHER_ICONS[icon];
+  document.getElementById('weather-line').textContent = `${day}: ${label}, ${hi} / ${lo}`;
+  document.getElementById('weather-desc').textContent = label;
+  document.getElementById('weather-hi').textContent = `${hi}${tempUnit()}`;
+  document.getElementById('weather-lo').textContent = lo;
+
+  const rain = d.precipitation_probability_max && d.precipitation_probability_max[i];
+  const rainEl = document.getElementById('weather-rain');
+  rainEl.hidden = rain == null;
+  rainEl.lastElementChild.textContent = `${rain}% chance of rain`;
+
+  // Sunrise arrives as local "YYYY-MM-DDTHH:MM"; show it in the chosen 12/24-hour format.
+  const sunEl = document.getElementById('weather-sunrise');
+  const m = /T(\d{2}):(\d{2})/.exec((d.sunrise && d.sunrise[i]) || '');
+  sunEl.hidden = !m;
+  if (m) {
+    const t = new Date();
+    t.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    const { clock, period } = timeParts(t);
+    sunEl.lastElementChild.textContent = `Sunrise ${clock}${period ? ` ${period}` : ''}`;
+  }
+
+  card.hidden = false;
+}
+
+/* ---------- Weather settings page ---------- */
+// "Weather" row in Settings: its switch turns the forecast on or off, and the
+// row itself opens a page for the location and temperature units.
+let locationUi = weatherCity ? 'city' : 'auto'; // which location option is showing
+let citySearchTimer = 0;
+let citySearchSeq = 0; // drops replies to searches that have since been retyped
+
+// Sync every weather control in Settings to the current state.
+function renderWeatherSettings() {
+  document.getElementById('weather-switch').checked = weatherOn;
+  document.getElementById('weather-switch-page').checked = weatherOn;
+
+  const where = weatherCity ? weatherCity.name : 'Automatic location';
+  document.getElementById('weather-row-sub').textContent =
+    weatherOn ? `${where} · °${tempUnit()}` : 'Off';
+
+  // Everything below the switch is unavailable while the forecast is off.
+  const options = document.getElementById('weather-options');
+  options.inert = !weatherOn;
+  options.classList.toggle('off', !weatherOn);
+
+  document.querySelectorAll('#weather-loc-seg .seg-opt').forEach((b) =>
+    b.classList.toggle('active', b.dataset.loc === locationUi)
+  );
+  document.getElementById('city-search').hidden = locationUi !== 'city';
+
+  let status;
+  if (locationUi === 'auto') {
+    const place = weather && weather.key === 'auto' && weather.place;
+    status = place
+      ? `Using your approximate location: ${place}.`
+      : 'Uses your approximate location, found from your internet connection.';
+  } else {
+    status = weatherCity
+      ? `Showing the forecast for ${[weatherCity.name, weatherCity.region].filter(Boolean).join(', ')}.`
+      : 'Search for the city to show the forecast for.';
+  }
+  // Only on a real change, so screen readers don't re-announce it on every sync.
+  const statusEl = document.getElementById('weather-loc-status');
+  if (statusEl.textContent !== status) statusEl.textContent = status;
+
+  document.querySelectorAll('#weather-unit-seg .seg-opt').forEach((b) =>
+    b.classList.toggle('active', b.dataset.unit === weatherUnit)
+  );
+}
+
+function setWeatherOn(on) {
+  weatherOn = on;
+  localStorage.setItem(STORE.weatherOn, on ? '1' : '0');
+  renderWeatherSettings();
+  renderWeather();
+  loadWeather(); // no-op when off, or when the cached forecast is still fresh
+}
+
+// Use a city picked from the search results, or null to go back to automatic.
+function setWeatherCity(city) {
+  weatherCity = city;
+  if (city) localStorage.setItem(STORE.weatherCity, JSON.stringify(city));
+  else localStorage.removeItem(STORE.weatherCity);
+  locationUi = city ? 'city' : 'auto';
+  renderWeatherSettings();
+  renderWeather(); // hides the old place's forecast until the new one arrives
+  loadWeather(true);
+}
+
+function cityMessage(text) {
+  const p = document.createElement('p');
+  p.className = 'city-msg';
+  p.textContent = text;
+  document.getElementById('city-results').replaceChildren(p);
+}
+
+// Look a city up with Open-Meteo's geocoder and list the matches.
+async function searchCities(query) {
+  const seq = ++citySearchSeq;
+  cityMessage('Searching…');
+  try {
+    const params = new URLSearchParams({ name: query, count: '6', language: 'en', format: 'json' });
+    const d = await fetchJSON(`${GEOCODE_URL}?${params}`);
+    if (seq !== citySearchSeq) return;
+    const results = (d.results || []).filter((r) => typeof r.latitude === 'number');
+    if (!results.length) {
+      cityMessage('No cities found. Try another spelling.');
+      return;
+    }
+    document.getElementById('city-results').replaceChildren(...results.map((r) => {
+      const city = {
+        name: r.name,
+        region: [r.admin1, r.country].filter(Boolean).join(', '),
+        lat: r.latitude,
+        lon: r.longitude,
+        country: r.country_code || '',
+      };
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'city-opt';
+      b.innerHTML = '<span class="city-name"></span><span class="city-region"></span>';
+      b.firstChild.textContent = city.name;
+      b.lastChild.textContent = city.region;
+      b.addEventListener('click', () => {
+        document.getElementById('city-input').value = '';
+        document.getElementById('city-results').replaceChildren();
+        setWeatherCity(city);
+      });
+      return b;
+    }));
+  } catch {
+    if (seq === citySearchSeq) cityMessage('Couldn’t search right now. Check your connection.');
+  }
+}
+
+function setupWeatherSettings() {
+  renderWeatherSettings();
+
+  document.getElementById('weather-page-btn').addEventListener('click', () => showSettingsPage('weather'));
+  document.getElementById('weather-back').addEventListener('click', () => showSettingsPage('main'));
+  ['weather-switch', 'weather-switch-page'].forEach((id) =>
+    document.getElementById(id).addEventListener('change', (e) => setWeatherOn(e.target.checked))
+  );
+
+  // Location: Automatic / Choose a city
+  document.getElementById('weather-loc-seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-opt');
+    if (!btn) return;
+    if (btn.dataset.loc === 'auto') {
+      if (weatherCity) {
+        setWeatherCity(null);
+      } else {
+        locationUi = 'auto';
+        renderWeatherSettings();
+      }
+    } else {
+      locationUi = 'city';
+      renderWeatherSettings();
+      document.getElementById('city-input').focus();
+    }
+  });
+
+  // City search, as you type (debounced so each keystroke isn't a request).
+  const input = document.getElementById('city-input');
+  input.addEventListener('input', () => {
+    clearTimeout(citySearchTimer);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      citySearchSeq++; // drop any search still on its way
+      document.getElementById('city-results').replaceChildren();
+      return;
+    }
+    citySearchTimer = setTimeout(() => searchCities(q), 300);
+  });
+  // Enter picks the top match.
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const first = document.querySelector('#city-results .city-opt');
+    if (first) first.click();
+  });
+
+  // Temperature units: Automatic / °F / °C
+  document.getElementById('weather-unit-seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-opt');
+    if (!btn) return;
+    weatherUnit = btn.dataset.unit;
+    if (weatherUnit === 'auto') localStorage.removeItem(STORE.weatherUnit);
+    else localStorage.setItem(STORE.weatherUnit, weatherUnit);
+    renderWeatherSettings();
+    renderWeather();
+  });
 }
 
 /* ---------- Plan bedtime mode: from a wake-up time or a bedtime ---------- */
@@ -261,17 +652,38 @@ function openDrawer() {
   document.body.classList.add('drawer-open');
 }
 function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
+  const drawer = document.getElementById('drawer');
+  drawer.classList.remove('open');
   document.getElementById('overlay').classList.add('hidden');
-  document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+  drawer.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('drawer-open');
+  // Next time Settings opens on its main page, once the slide-out has finished.
+  setTimeout(() => {
+    if (!drawer.classList.contains('open')) showSettingsPage('main', false);
+  }, 400);
 }
 
-// Android back button: the APK asks the page first. Close Settings if it's
-// open and report the press as handled; otherwise the app goes back as usual.
+// Settings has a main page and a Weather page; show one. `focus` moves the
+// keyboard focus to the new page so keyboard and screen reader users follow.
+function showSettingsPage(page, focus = true) {
+  const main = document.getElementById('settings-main');
+  const wx = document.getElementById('settings-weather');
+  const toWeather = page === 'weather';
+  if (wx.hidden === !toWeather) return; // already showing
+  // Slides in from the right going deeper, from the left coming back.
+  (toWeather ? wx : main).classList.toggle('back', !toWeather);
+  main.hidden = toWeather;
+  wx.hidden = !toWeather;
+  document.getElementById('drawer').scrollTop = 0;
+  if (focus) document.getElementById(toWeather ? 'weather-back' : 'weather-page-btn').focus();
+}
+
+// Back (Android button, or Escape): leave the Weather page first, then close
+// Settings. Returns true when it handled the press; otherwise the app goes back as usual.
 window.handleBack = () => {
   if (!document.getElementById('drawer').classList.contains('open')) return false;
-  closeDrawer();
+  if (!document.getElementById('settings-weather').hidden) showSettingsPage('main');
+  else closeDrawer();
   return true;
 };
 
@@ -306,7 +718,15 @@ function deleteData() {
   document.getElementById('wake-input').value = DEFAULT_WAKE;
   document.getElementById('bed-input').value = DEFAULT_BED;
   refreshPickers();
+  weather = null;      // the cached forecast was wiped with the rest
+  weatherOn = true;
+  weatherUnit = 'auto';
+  weatherCity = null;
+  locationUi = 'auto';
+  setWeatherOpen(false);
+  renderWeatherSettings();
   setPlanFrom('wake'); // also re-renders
+  loadWeather();
 }
 
 /* ---------- Wire up ---------- */
@@ -325,9 +745,12 @@ function init() {
 
   // Settings open/close
   document.getElementById('settings-btn').addEventListener('click', openDrawer);
-  document.getElementById('close-settings').addEventListener('click', closeDrawer);
+  document.querySelectorAll('[data-close-settings]').forEach((b) =>
+    b.addEventListener('click', closeDrawer)
+  );
   document.getElementById('overlay').addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.handleBack(); });
+  setupWeatherSettings();
 
   // Theme: light / dark / system
   document.getElementById('theme-seg').addEventListener('click', (e) => {
@@ -390,6 +813,20 @@ function init() {
   setInterval(() => {
     if (isWakePanelActive()) renderWake();
   }, 30000);
+
+  // Tomorrow's weather: one line that opens into the full card, remembered
+  // between visits. Fetch now, and again when the app comes back to the front
+  // with a forecast more than an hour old.
+  setWeatherOpen(localStorage.getItem(STORE.weatherOpen) === '1');
+  document.getElementById('weather-toggle').addEventListener('click', () => {
+    const open = !document.getElementById('weather').classList.contains('open');
+    setWeatherOpen(open);
+    localStorage.setItem(STORE.weatherOpen, open ? '1' : '0');
+  });
+  loadWeather();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadWeather();
+  });
 }
 
 /* ---------- Custom desktop time picker ---------- */
@@ -679,9 +1116,76 @@ function setupApk() {
   if (isAndroidWeb()) document.getElementById('apk-row').classList.remove('hidden');
 }
 
+/* ---------- Android app: check for updates ---------- */
+// APK-only self-updater, the same design as Alek Weather. All networking and
+// the install happen natively (window.AndroidUpdate in MainActivity.kt); this
+// is only the Settings row. Nothing runs until "Check for updates" is tapped.
+// Native reports back with `sleepupdate` / `sleepupdateprogress` events.
+function setupUpdater() {
+  const bridge = window.AndroidUpdate;
+  if (!isAndroidApp() || !bridge) return;
+
+  const row = document.getElementById('update-row');
+  const label = document.getElementById('update-label');
+  const sub = document.getElementById('update-sub');
+  const btn = document.getElementById('update-btn');
+  const current = bridge.currentVersion();
+  let offeredUrl = '';    // set once a check finds a newer release
+  let offeredVersion = '';
+
+  row.classList.remove('hidden');
+  sub.textContent = current
+    ? `You have version ${current}. Check GitHub for a newer one.`
+    : 'Check GitHub for a newer version of the app.';
+
+  // Show one step of the flow: checking, current, available, downloading, ...
+  function show(phase, detail = {}) {
+    label.textContent = offeredUrl ? `Version ${offeredVersion} available` : 'App updates';
+    btn.textContent = offeredUrl ? 'Update' : 'Check for updates';
+    btn.disabled = phase === 'checking' || phase === 'downloading';
+    sub.textContent = {
+      checking: 'Checking for updates…',
+      current: `You’re on the latest version (${detail.current || current}).`,
+      available: `You have version ${current}. Tap Update to download and install it.`,
+      downloading: `Downloading… ${detail.pct || 0}%`,
+      installing: 'Follow the prompt to finish installing.',
+      permission: 'Allow installs from Sleep Calculator, then tap Update again.',
+      error: offeredUrl
+        ? 'The download didn’t finish. Tap Update to try again.'
+        : 'Couldn’t check for updates. Try again later.',
+    }[phase] || '';
+  }
+
+  btn.addEventListener('click', () => {
+    if (offeredUrl) {
+      show('downloading', { pct: 0 });
+      bridge.install(offeredUrl);
+    } else {
+      show('checking');
+      bridge.check();
+    }
+  });
+
+  window.addEventListener('sleepupdate', (e) => {
+    const d = e.detail || {};
+    if (d.status === 'available') {
+      offeredUrl = d.url;
+      offeredVersion = d.latest;
+    } else if (d.status === 'current') {
+      offeredUrl = '';
+    }
+    // A failed download keeps offering the update rather than a fresh check.
+    show(d.status, d);
+  });
+  window.addEventListener('sleepupdateprogress', (e) => {
+    show('downloading', { pct: Number(e.detail) || 0 });
+  });
+}
+
 // Boot the app once the DOM is ready.
 document.addEventListener('DOMContentLoaded', () => {
   init();
   setupPWA();
   setupApk();
+  setupUpdater();
 });

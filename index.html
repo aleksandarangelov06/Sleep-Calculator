@@ -32,6 +32,25 @@
           <p class="tagline">Wake up between sleep cycles</p>
         </div>
       </div>
+
+      <!-- Mode tabs: own row on phones, centered in the header on wide screens -->
+      <div class="tabs" role="tablist" aria-label="Mode" data-active="wake">
+        <button class="tab active" id="tab-wake" role="tab" aria-selected="true" aria-controls="panel-wake">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          Sleep now
+        </button>
+        <button class="tab" id="tab-bed" role="tab" aria-selected="false" aria-controls="panel-bed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2" />
+            <path d="M5 3 2 6" /><path d="m22 6-3-3" />
+            <path d="M6.38 18.7 4 21" /><path d="M17.64 18.67 20 21" />
+          </svg>
+          Plan bedtime
+        </button>
+      </div>
+
       <button class="icon-btn" id="settings-btn" aria-label="Settings" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
@@ -39,24 +58,6 @@
         </svg>
       </button>
     </header>
-
-    <!-- Mode tabs -->
-    <div class="tabs" role="tablist" aria-label="Mode" data-active="wake">
-      <button class="tab active" id="tab-wake" role="tab" aria-selected="true" aria-controls="panel-wake">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
-        Sleep now
-      </button>
-      <button class="tab" id="tab-bed" role="tab" aria-selected="false" aria-controls="panel-bed">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2" />
-          <path d="M5 3 2 6" /><path d="m22 6-3-3" />
-          <path d="M6.38 18.7 4 21" /><path d="M17.64 18.67 20 21" />
-        </svg>
-        Plan bedtime
-      </button>
-    </div>
 
     <!-- ===== Wake-up mode (sleep now) ===== -->
     <section class="panel" id="panel-wake" role="tabpanel" aria-labelledby="tab-wake">
@@ -66,7 +67,56 @@
         <p class="hero-sub">
           Wake up at the end of a sleep cycle and you&rsquo;ll feel refreshed instead of groggy.
         </p>
+
+        <!-- Forecast for the day you wake up (tomorrow, or today after midnight).
+             One line by default; the arrow opens the full card. JS fills it in
+             and shows it once a forecast has loaded. -->
+        <div class="weather" id="weather" hidden>
+          <button type="button" class="weather-toggle" id="weather-toggle"
+                  aria-expanded="false" aria-controls="weather-details">
+            <svg class="weather-line-icon" id="weather-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
+            <!-- Collapsed: the one-line summary. Open: the card's heading. -->
+            <span class="weather-line" id="weather-line"></span>
+            <span class="weather-head">
+              <span class="weather-day" id="weather-day">Tomorrow</span>
+              <span class="weather-place" id="weather-place"></span>
+            </span>
+            <svg class="weather-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+
+          <div class="weather-details" id="weather-details" hidden>
+            <div class="weather-main">
+              <svg class="weather-icon" id="weather-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
+              <div class="weather-summary">
+                <div class="weather-temps">
+                  <span id="weather-hi"></span><span class="weather-lo" id="weather-lo"></span>
+                </div>
+                <div class="weather-desc" id="weather-desc"></div>
+              </div>
+              <div class="weather-stats">
+                <span class="weather-stat" id="weather-rain">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />
+                  </svg>
+                  <span></span>
+                </span>
+                <span class="weather-stat" id="weather-sunrise">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 2v8" /><path d="m4.93 10.93 1.41 1.41" /><path d="M2 18h2" /><path d="M20 18h2" />
+                    <path d="m19.07 10.93-1.41 1.41" /><path d="M22 22H2" /><path d="m8 6 4-4 4 4" /><path d="M16 18a4 4 0 0 0-8 0" />
+                  </svg>
+                  <span></span>
+                </span>
+              </div>
+            </div>
+            <a class="weather-credit" href="https://aleksandarangelov06.github.io/Alek-Weather/" target="_blank" rel="noopener">Powered by Alek Weather</a>
+          </div>
+        </div>
       </div>
+      <!-- Results: below the hero on phones, beside it on wide screens -->
+      <div class="panel-body">
       <div class="sleep-warning hidden" id="wake-warning">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -80,6 +130,7 @@
         Includes <span id="fall-note">15</span> min to fall asleep. Based on recommendations
         from sleep studies. Not medical advice.
       </p>
+      </div>
     </section>
 
     <!-- ===== Bedtime mode ===== -->
@@ -105,6 +156,7 @@
           We&rsquo;ll work backward so you wake up at the end of a full sleep cycle.
         </p>
       </div>
+      <div class="panel-body">
       <div class="sleep-warning hidden" id="bed-warning">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -117,16 +169,18 @@
       <p class="footnote">
         Times include the <span id="fall-note-2">15</span> min it takes you to fall asleep.
       </p>
+      </div>
     </section>
   </div>
 
   <!-- ===== Settings drawer ===== -->
   <div class="overlay hidden" id="overlay"></div>
   <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Settings">
-    <div class="drawer-inner">
+    <!-- Main settings page -->
+    <div class="drawer-inner" id="settings-main">
       <div class="drawer-head">
         <h2>Settings</h2>
-        <button class="icon-btn" id="close-settings" aria-label="Close settings">
+        <button class="icon-btn" id="close-settings" data-close-settings aria-label="Close settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -168,6 +222,24 @@
           </div>
         </div>
 
+        <!-- Weather: the row opens the Weather page; the switch turns it on or off -->
+        <div class="setting-row setting-nav">
+          <button type="button" class="nav-btn" id="weather-page-btn">
+            <span class="setting-text">
+              <span class="setting-label">Weather</span>
+              <span class="setting-sub" id="weather-row-sub">Automatic location</span>
+            </span>
+            <svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+          <span class="nav-divider" aria-hidden="true"></span>
+          <label class="switch nav-switch">
+            <input type="checkbox" role="switch" id="weather-switch" aria-label="Show weather" checked />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+
         <!-- Android browsers only (JS shows it). GitHub serves the newest release's
              asset at this path, so the link never needs bumping as long as each
              release uploads the file as SleepCalculator.apk. -->
@@ -178,6 +250,16 @@
           </div>
           <a class="install-btn" id="apk-btn"
              href="https://github.com/aleksandarangelov06/Sleep-Calculator/releases/latest/download/SleepCalculator.apk">Download APK</a>
+        </div>
+
+        <!-- Inside the Android app only (JS shows it). The check, download and
+             install all run natively through window.AndroidUpdate. -->
+        <div class="setting-row hidden" id="update-row">
+          <div class="setting-text">
+            <div class="setting-label" id="update-label">App updates</div>
+            <div class="setting-sub" id="update-sub">Check GitHub for a newer version of the app.</div>
+          </div>
+          <button class="install-btn" id="update-btn">Check for updates</button>
         </div>
 
         <div class="setting-row hidden" id="install-row">
@@ -202,9 +284,82 @@
         <img class="drawer-logo" src="images/pwa-icon.svg" alt="Alek Studios logo" width="40" height="40" />
         <div class="drawer-footer-text">
           <div class="studio-name">Alek Studios</div>
-          <div class="app-version">Version 1.1</div>
+          <div class="app-version">Version 1.2</div>
         </div>
       </footer>
+    </div>
+
+    <!-- Weather page (opened from the Weather row) -->
+    <div class="drawer-inner" id="settings-weather" hidden>
+      <div class="drawer-head">
+        <div class="drawer-title">
+          <button class="icon-btn" id="weather-back" aria-label="Back to settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          <h2>Weather</h2>
+        </div>
+        <button class="icon-btn" data-close-settings aria-label="Close settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="settings">
+        <div class="setting-row setting-inline">
+          <div class="setting-text">
+            <div class="setting-label">Show weather</div>
+            <div class="setting-sub">The forecast for the morning you wake up, on the Sleep now screen.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" role="switch" id="weather-switch-page" aria-label="Show weather" checked />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+
+        <!-- Unavailable (inert, dimmed) while the forecast is off -->
+        <div class="weather-options" id="weather-options">
+          <div class="setting-row">
+            <div class="setting-text">
+              <div class="setting-label">Location</div>
+              <div class="setting-sub" id="weather-loc-status" aria-live="polite">Uses your approximate location, found from your internet connection.</div>
+            </div>
+            <div class="segmented" id="weather-loc-seg">
+              <button class="seg-opt active" data-loc="auto">Automatic</button>
+              <button class="seg-opt" data-loc="city">Choose a city</button>
+            </div>
+            <div class="city-search" id="city-search" hidden>
+              <div class="search-field">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+                </svg>
+                <input type="search" id="city-input" placeholder="Search for a city" autocomplete="off"
+                       spellcheck="false" aria-label="Search for a city" aria-controls="city-results" />
+              </div>
+              <div class="city-results" id="city-results" aria-live="polite"></div>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-text">
+              <div class="setting-label">Temperature units</div>
+              <div class="setting-sub">Automatic uses °F in the US and °C elsewhere.</div>
+            </div>
+            <div class="segmented" id="weather-unit-seg">
+              <button class="seg-opt active" data-unit="auto">Automatic</button>
+              <button class="seg-opt" data-unit="F">°F</button>
+              <button class="seg-opt" data-unit="C">°C</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="weather-attrib">
+        Forecasts from Open-Meteo.
+        <a href="https://aleksandarangelov06.github.io/Alek-Weather/" target="_blank" rel="noopener">Powered by Alek Weather</a>
+      </p>
     </div>
   </aside>
 

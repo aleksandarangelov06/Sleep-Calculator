@@ -4,6 +4,7 @@
 # name (window.AndroidBars.setBars), so without this R8 strips it and the call
 # fails at runtime with no build error to warn anyone.
 -keep class com.alekstudios.sleepcalculator.MainActivity$BarsBridge { *; }
+-keep class com.alekstudios.sleepcalculator.MainActivity$Updater { *; }
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
